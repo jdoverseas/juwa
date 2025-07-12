@@ -1,0 +1,191 @@
+# Directory Structure
+fantasy-sports-bd/
+├── client/               # Frontend (React)
+│   ├── public/
+│   ├── src/
+│   ├── package.json
+├── server/               # Backend (Node.js)
+│   ├── models/
+│   ├── routes/
+│   ├── package.json
+├── mobile/               # Mobile app (React Native)
+│   ├── android/
+│   ├── ios/
+│   ├── src/
+├── scripts/              # Deployment scripts
+│   ├── deploy.sh
+│   ├── setup_db.py
+├── legal/                # Bangladesh compliance docs
+│   ├── terms_bn.md       # Terms in Bengali
+│   ├── privacy_policy.md
+└── README.md             # In Bengali/English
+import React, { useState, useEffect } from 'react';
+import './App.css';
+
+function App() {
+  const [matches, setMatches] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/matches')
+      .then(res => res.json())
+      .then(data => setMatches(data));
+  }, []);
+
+  const joinContest = (matchId) => {
+    fetch('/api/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matchId })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if(data.paymentUrl) window.location.href = data.paymentUrl;
+    });
+  };
+
+  return (
+    <div className="App">
+      <header>
+        <h1>ফ্যান্টাসি ক্রিকেট</h1>
+      </header>
+      <div className="matches">
+        {matches.map(match => (
+          <div key={match._id} className="match-card">
+            <h3>{match.team1} vs {match.team2}</h3>
+            <p>এন্ট্রি ফি: ৳{match.entryFee}</p>
+            <button onClick={() => joinContest(match._id)}>
+              অংশগ্রহণ করুন
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default App;
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const SSLCommerzPayment = require('sslcommerz-lts');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/fantasy-bd');
+
+// Match Model
+const Match = mongoose.model('Match', new mongoose.Schema({
+  team1: String,
+  team2: String,
+  time: Date,
+  entryFee: Number
+}));
+
+// SSLCommerz Route
+app.post('/api/join', async (req, res) => {
+  const { matchId } = req.body;
+  
+  const sslcz = new SSLCommerzPayment(
+    process.env.SSL_STORE_ID,
+    process.env.SSL_STORE_PASS,
+    false // Test mode
+  );
+
+  const data = {
+    total_amount: 20,
+    currency: 'BDT',
+    tran_id: `TXN_${Date.now()}`,
+    success_url: `${process.env.FRONTEND_URL}/success`,
+    fail_url: `${process.env.FRONTEND_URL}/fail`,
+    cus_phone: '017XXXXXXXX',
+    cus_email: 'user@example.com',
+    shipping_method: 'NO'
+  };
+
+  try {
+    const paymentUrl = await sslcz.init(data);
+    res.json({ paymentUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Other API routes
+app.get('/api/matches', async (req, res) => {
+  const matches = await Match.find();
+  res.json(matches);
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+#!/bin/bash
+# বাংলাদেশি সার্ভারে ডেপ্লয়মেন্ট স크্রিপ্ট
+
+echo "ডিপেন্ডেন্সি ইন্সটল করা হচ্ছে..."
+sudo apt update
+sudo apt install -y nodejs npm mongodb nginx
+
+echo "ব্যাকএন্ড সেটআপ..."
+cd server
+npm install
+pm2 start server.js --name "fantasy-backend"
+
+echo "ফ্রন্টএন্ড বিল্ড করা হচ্ছে..."
+cd ../client
+npm install
+npm run build
+sudo cp -r build /var/www/fantasy
+
+echo "এনজিআইএনএক্স কনফিগারেশন..."
+sudo bash -c 'cat > /etc/nginx/sites-available/fantasy <<EOL
+server {
+    listen 80;
+    server_name yourdomain.com.bd;
+
+    location / {
+        root /var/www/fantasy;
+        try_files \$uri /index.html;
+    }
+
+    location /api {
+        proxy_pass http://localhost:5000;
+    }
+}
+EOL'
+
+sudo ln -s /etc/nginx/sites-available/fantasy /etc/nginx/sites-enabled
+sudo systemctl restart nginx
+
+echo "ডাটাবেস ইন্সটল করা হচ্ছে..."
+mongo --eval "db.createCollection('matches')"
+mongo --eval "db.matches.insertOne({ 
+  team1: 'বাংলাদেশ', 
+  team2: 'ভারত', 
+  time: new Date(), 
+  entryFee: 20 
+})"
+## ব্যবহারের শর্তাবলী
+১. এই প্ল্যাটফর্মটি সম্পূর্ণভাবে স্কিল-ভিত্তিক  
+২. ব্যবহারকারীদের অবশ্যই ১৮+ বছর বয়সী হতে হবে  
+৩. বাংলাদেশের সকল আইন মেনে চলা বাধ্যতামূলক  
+
+## গোপনীয়তা নীতি
+১. ব্যবহারকারীর ডেটা সুরক্ষিত থাকবে  
+২. SSLCommerz এর মাধ্যমে নিরাপদ লেনদেন  
+# ফ্যান্টাসি স্পোর্টস অ্যাপ
+
+## স্থানীয়ভাবে রান করতে:
+```bash
+cd server
+npm install
+node server.js
+
+cd ../client
+npm install
+npm start
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
